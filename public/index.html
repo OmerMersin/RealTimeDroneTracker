@@ -1,0 +1,185 @@
+<!DOCTYPE html>
+<html>
+<head>
+  <meta charset="utf-8" />
+  <title>Real-Time Drone Tracking</title>
+  
+  <!-- Leaflet CSS -->
+  <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.3/dist/leaflet.css" />
+  <!-- Leaflet JS -->
+  <script src="https://unpkg.com/leaflet@1.9.3/dist/leaflet.js"></script>
+
+  <style>
+    /* Basic page and map styles */
+    html, body { margin: 0; padding: 0; height: 100%; }
+    #map { width: 100%; height: 100%; }
+
+    /* Metadata display box */
+    #infoBox {
+      position: absolute;
+      bottom: 20px;
+      left: 20px;
+      width: 300px;
+      background: rgba(0, 0, 0, 0.7);
+      color: white;
+      padding: 10px;
+      font-family: Arial, sans-serif;
+      font-size: 14px;
+      border-radius: 8px;
+      z-index: 1000;
+    }
+    #infoBox h3 {
+      margin: 0;
+      font-size: 16px;
+      text-align: center;
+      color: #FFD700;
+    }
+  </style>
+</head>
+<body>
+
+<div id="map"></div>
+<div id="infoBox">
+  <h3>Drone Telemetry</h3>
+  <div id="telemetryData">Waiting for data...</div>
+</div>
+
+<script>
+  // ----------------------------------------------------
+  // 1) Initialize the Leaflet map
+  // ----------------------------------------------------
+  const map = L.map('map', {
+    center: [37.3568, -6.1258],
+    zoom: 15,
+    attributionControl: false  // 👈 This removes the Mapbox/Leaflet tag
+  });
+  // ----------------------------------------------------
+  // 2) Add a tile layer
+  // ----------------------------------------------------
+  L.tileLayer("http://localhost:3000/tiles/{z}/{x}/{y}.png", {
+    // optional subdomains, maxZoom, etc.
+    maxZoom: 22,
+  }).addTo(map);
+
+  // ----------------------------------------------------
+  // 3) Define custom icons
+  // ----------------------------------------------------
+  const droneIcon = L.icon({
+    iconUrl: "drone.png", // Drone Icon
+    iconSize: [35, 35],
+    iconAnchor: [17, 17]
+  });
+
+  const crosshairIcon = L.icon({
+    iconUrl: "crosshair.png", // Crosshair Icon
+    iconSize: [20, 20],
+    iconAnchor: [10, 10]
+  });
+
+  // ----------------------------------------------------
+  // 4) Keep references to markers and lines
+  // ----------------------------------------------------
+  let gimbalMarker = null;
+  let targetMarker = null;
+  let lineLayer = null;
+
+  // ----------------------------------------------------
+  // 5) Function to fetch telemetry data and update markers
+  // ----------------------------------------------------
+  function fetchAndUpdateMarkers() {
+    fetch("http://80.31.42.198:8082/") // GET telemetry data
+      .then(response => {
+        if (!response.ok) {
+          throw new Error("Server returned status " + response.status);
+        }
+        return response.json();
+      })
+      .then(data => {
+        console.log("Received telemetry:", data);
+
+        // Extract gimbal and target positions
+        if (data.features && data.features.length > 0) {
+          const feature = data.features[0];
+          const gimbalLat = feature.properties.gimbal_lat;
+          const gimbalLng = feature.properties.gimbal_long;
+          const gimbalAlt = feature.properties.gimbal_alt;
+          const targetLat = feature.properties.target_lat;
+          const targetLng = feature.properties.target_long;
+          const targetAlt = feature.properties.target_alt;
+          const speed = feature.properties.speed;
+          const heading = feature.properties.gimbal_heading;
+          const lastUpdate = feature.properties.last_update;
+          const flightId = feature.properties.id_flight;
+          const status = feature.properties.status;
+
+          document.getElementById("infoBox").style.display = "block";
+
+          // ------------------------
+          // 6) Update Gimbal (Drone) Marker
+          // ------------------------
+          if (gimbalMarker) {
+            gimbalMarker.setLatLng([gimbalLat, gimbalLng]);
+          } else {
+            gimbalMarker = L.marker([gimbalLat, gimbalLng], { icon: droneIcon })
+              .bindPopup("Gimbal (Drone) Position")
+              .addTo(map);
+          }
+
+          // ------------------------
+          // 7) Update Target Marker
+          // ------------------------
+          if (targetMarker) {
+            targetMarker.setLatLng([targetLat, targetLng]);
+          } else {
+            targetMarker = L.marker([targetLat, targetLng], { icon: crosshairIcon })
+              .bindPopup("Target Position")
+              .addTo(map);
+          }
+
+          // ------------------------
+          // 8) Draw Line Between Gimbal & Target
+          // ------------------------
+          if (lineLayer) {
+            map.removeLayer(lineLayer);
+          }
+          lineLayer = L.polyline([[gimbalLat, gimbalLng], [targetLat, targetLng]], {
+            color: "#FFD700",
+            weight: 3,
+            opacity: 0.8
+          }).addTo(map);
+
+          // ------------------------
+          // 9) Update Metadata Display
+          // ------------------------
+          document.getElementById("telemetryData").innerHTML = `
+            <strong class="data-label">Flight ID:</strong> ${flightId || "N/A"} <br>
+            <strong class="data-label">Status:</strong> ${status || "N/A"} <br>
+            <strong class="data-label">Last Update:</strong> ${lastUpdate || "N/A"} <br>
+            <strong class="data-label">Heading:</strong> ${heading !== undefined ? heading + "°" : "N/A"} <br>
+            <strong class="data-label">Gimbal Position:</strong> ${gimbalLat.toFixed(6)}, ${gimbalLng.toFixed(6)}<br>
+            <strong class="data-label">Gimbal Altitude:</strong> ${gimbalAlt.toFixed(2)}m <br>
+            <strong class="data-label">Target Position:</strong> ${targetLat.toFixed(6)}, ${targetLng.toFixed(6)}<br>
+            <strong class="data-label">Target Altitude:</strong> ${targetAlt.toFixed(2)}m
+          `;
+          document.getElementById("infoBox").style.display = "block";
+
+          // ------------------------
+          // 10) Optionally, recenter map
+          // ------------------------
+          map.setView([gimbalLat, gimbalLng], 15);
+        }
+      })
+      .catch(err => console.error("Failed fetching data:", err));
+  }
+
+  // ----------------------------------------------------
+  // 11) Fetch data immediately and set interval
+  // ----------------------------------------------------
+  document.getElementById("infoBox").style.display = "block";
+
+  fetchAndUpdateMarkers();
+  setInterval(fetchAndUpdateMarkers, 10); // Update every 0.01 seconds
+</script>
+
+</body>
+</html>
