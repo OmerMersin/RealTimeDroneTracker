@@ -1,0 +1,27 @@
+{
+  "name": "dronetelemetryapp",
+  "version": "1.0.0",
+  "main": "index.js",
+  "scripts": {
+    "start": "node server/server.js"
+  },
+  "bin": "server/server.js",
+  "pkg": {
+    "assets": [
+      "public/*"
+    ],
+    "targets": [
+      "node18-win-x64"
+    ]
+  },
+  "keywords": [],
+  "author": "",
+  "license": "ISC",
+  "description": "",
+  "dependencies": {
+    "cors": "^2.8.5",
+    "express": "^4.21.2",
+    "node-fetch": "^3.3.2",
+    "open": "^7.4.2"
+  }
+}
